@@ -168,7 +168,8 @@ interface AudioTask {
   isReady: boolean;
   isFailed: boolean;
   base64Audio?: string;
-  puterPlay?: () => Promise<void>;
+  nativePlay?: () => Promise<void>;   // Web Speech API (free, Vietnamese)
+  puterPlay?: () => Promise<void>;    // Puter ElevenLabs fallback
   onStart?: () => void;
   onEnd?: () => void;
 }
@@ -726,6 +727,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
   const stopAllAudio = () => {
     audioTasks.current = [];
     isPlayingAudio.current = false;
+    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
   };
 
   const addAudioTask = (text: string, onStart?: () => void, onEnd?: () => void) => {
@@ -734,6 +736,64 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
     fetchNextAudio();
   };
 
+
+  // ── WEB SPEECH API ──────────────────────────────────────────────
+  // Ưu tiên 1: Giọng nữ tiếng Việt miễn phí từ trình duyệt/hệ điều hành
+  const createWebSpeechPlayer = (text: string): (() => Promise<void>) | null => {
+    if (!('speechSynthesis' in window)) return null;
+
+    return () => new Promise<void>((resolve, reject) => {
+      window.speechSynthesis.cancel();
+
+      const utter = new SpeechSynthesisUtterance(text);
+      utter.lang = 'vi-VN';
+      utter.rate = 0.82;   // chậm nhẹ để đọc thơ nghe rõ
+      utter.pitch = 1.15;  // hơi cao → giọng nữ
+
+      const trySpeak = () => {
+        const voices = window.speechSynthesis.getVoices();
+        const viVoices = voices.filter(v => v.lang.startsWith('vi'));
+
+        if (!voices.length) {
+          // Voices not loaded yet – wait for voiceschanged
+          return false;
+        }
+
+        if (!viVoices.length) {
+          reject(new Error('Không tìm thấy giọng tiếng Việt trong trình duyệt'));
+          return true;
+        }
+
+        // Ưu tiên giọng nữ: tên chứa "female", "woman", "f" hoặc "Wavenet-A/C/E"
+        const femaleVoice =
+          viVoices.find(v => /female|woman|f|wavenet-[ace]/i.test(v.name)) ||
+          viVoices.find(v => v.name.includes('Google') ) ||
+          viVoices[0];
+
+        utter.voice = femaleVoice;
+        utter.onend = () => resolve();
+        utter.onerror = (e) => {
+          if ((e as any).error === 'interrupted') { resolve(); return; }
+          reject(new Error('Web Speech error: ' + (e as any).error));
+        };
+        window.speechSynthesis.speak(utter);
+        return true;
+      };
+
+      if (!trySpeak()) {
+        const onVoicesChanged = () => {
+          window.speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged);
+          trySpeak();
+        };
+        window.speechSynthesis.addEventListener('voiceschanged', onVoicesChanged);
+        // Safety timeout
+        setTimeout(() => {
+          window.speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged);
+          trySpeak();
+        }, 2000);
+      }
+    });
+  };
 
   const createPuterElevenLabsPlayer = async (text: string): Promise<(() => Promise<void>) | null> => {
     const puter = (window as any).puter;
@@ -801,42 +861,56 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
 
     task.isFetching = true;
     try {
-      const response = await fetch(ELEVENLABS_TTS_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: task.text, voiceId: ELEVENLABS_VOICE_ID }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`ElevenLabs TTS failed (${response.status}): ${errText}`);
-      }
-
-      const buffer = await response.arrayBuffer();
-      let binary = '';
-      const bytes = new Uint8Array(buffer);
-      const chunkSize = 0x8000;
-      for (let i = 0; i < bytes.length; i += chunkSize) {
-        binary += String.fromCharCode(...bytes.slice(i, i + chunkSize));
-      }
-      task.base64Audio = `data:audio/mpeg;base64,${btoa(binary)}`;
-      task.isReady = true;
-    } catch (error: any) {
-      console.warn('Server ElevenLabs TTS unavailable, trying Puter ElevenLabs:', error);
-      try {
-        const puterPlay = await createPuterElevenLabsPlayer(task.text);
-        if (!puterPlay) {
-          throw new Error('Puter ElevenLabs is unavailable in this browser');
-        }
-
-        task.puterPlay = puterPlay;
-        task.base64Audio = 'puter-elevenlabs';
+      // ── Ưu tiên 1: Web Speech API (free, giọng Việt từ trình duyệt) ──
+      const webSpeechPlay = createWebSpeechPlayer(task.text);
+      if (webSpeechPlay) {
+        task.nativePlay = webSpeechPlay;
+        task.base64Audio = 'web-speech';
         task.isReady = true;
         setTtsError(null);
-      } catch (puterError) {
-        console.warn('Puter ElevenLabs TTS unavailable:', puterError);
-        task.isFailed = true;
-        setTtsError('Không phát được audio: ElevenLabs server và Puter ElevenLabs đều đang lỗi.');
+      } else {
+        throw new Error('Web Speech không khả dụng');
+      }
+    } catch (webErr: any) {
+      console.warn('Web Speech unavailable, trying ElevenLabs server:', webErr.message);
+      try {
+        // ── Ưu tiên 2: ElevenLabs server API ──
+        const response = await fetch(ELEVENLABS_TTS_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: task.text, voiceId: ELEVENLABS_VOICE_ID }),
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          throw new Error(`ElevenLabs TTS failed (${response.status}): ${errText}`);
+        }
+
+        const buffer = await response.arrayBuffer();
+        let binary = '';
+        const bytes = new Uint8Array(buffer);
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          binary += String.fromCharCode(...bytes.slice(i, i + chunkSize));
+        }
+        task.base64Audio = `data:audio/mpeg;base64,${btoa(binary)}`;
+        task.isReady = true;
+        setTtsError(null);
+      } catch (elError: any) {
+        console.warn('ElevenLabs server unavailable, trying Puter ElevenLabs:', elError);
+        try {
+          // ── Ưu tiên 3: Puter ElevenLabs ──
+          const puterPlay = await createPuterElevenLabsPlayer(task.text);
+          if (!puterPlay) throw new Error('Puter ElevenLabs unavailable');
+          task.puterPlay = puterPlay;
+          task.base64Audio = 'puter-elevenlabs';
+          task.isReady = true;
+          setTtsError(null);
+        } catch (puterError) {
+          console.warn('All TTS sources failed:', puterError);
+          task.isFailed = true;
+          setTtsError('Không phát được audio: trình duyệt không có giọng Việt và ElevenLabs đều lỗi.');
+        }
       }
     } finally {
       task.isFetching = false;
@@ -859,7 +933,9 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
       isPlayingAudio.current = true;
       if (task.onStart) task.onStart();
       try {
-        if (task.puterPlay) {
+        if (task.nativePlay) {
+          await task.nativePlay();
+        } else if (task.puterPlay) {
           await task.puterPlay();
         } else if (task.base64Audio.startsWith('data:audio/')) {
           await new Promise<void>((resolve, reject) => {
