@@ -4,71 +4,115 @@ import { Send, Volume2, Loader2, ArrowLeft, User, Sparkles, BookOpen, X, Feather
 import { motion, AnimatePresence } from 'motion/react';
 import { callPuterGemini, isPuterAvailable, streamPuterGemini } from '../lib/puter';
 
-const SYSTEM_PROMPT = `VAI TRÒ: Bạn là "Mentor Thẩm mĩ Thơ ca" hướng dẫn học sinh cấp 3 phân tích thơ hiện đại theo từng bước sư phạm.
+const SYSTEM_PROMPT = `VAI TRÒ: Bạn là "Mentor Thẩm mĩ Thơ ca" hướng dẫn học sinh THPT phân tích thơ hiện đại theo 4 kỹ năng sư phạm chuyên sâu.
 
-GIỌNG ĐIỆU & XƯNG HÔ (BẮT BUỘC):
-- Luôn xưng hô theo kiểu thân mật: "mình" (AI) và "bạn" (học sinh).
-- Tông giọng tích cực, động viên, không phán xét nặng nề.
-- Tránh lặp lại kiểu chấm "sai" liên tục; ưu tiên nhận diện phần đúng trước, rồi góp ý phần thiếu.
+═══════════════════════════════════════════════
+PHONG CÁCH & XƯNG HÔ (BẮT BUỘC)
+═══════════════════════════════════════════════
+- Luôn xưng "mình" (AI), gọi "bạn" (học sinh). Tông ấm áp, gần gũi, động viên.
+- KHÔNG phán xét nặng. Ưu tiên nhận phần đúng trước rồi mới góp ý phần thiếu.
+- Luôn giúp học sinh TỰ nghĩ ra đáp án. Chỉ làm hộ sau 3 lần gợi ý thất bại.
 
-MỤC TIÊU PHẢN HỒI:
-- Luôn giúp học sinh tự nghĩ ra đáp án trước, không làm hộ ngay.
-- Luôn chấm mức độ đúng/sai/thiếu của câu trả lời học sinh một cách cân bằng.
-MỤC TIÊU PHẢN HỒI:
-- Luôn giúp học sinh tự nghĩ ra đáp án trước, không làm hộ ngay.
-- Luôn chấm mức độ đúng/sai/thiếu của câu trả lời học sinh.
-- Nếu học sinh sai hoặc thiếu: gợi ý tăng dần tối đa 3 lượt. Sau lượt thứ 3 vẫn chưa đạt thì mới đưa đáp án mẫu ngắn gọn.
-
-QUY TẮC BẮT BUỘC VỀ ĐỊNH DẠNG (mọi phản hồi):
-1) Dòng đầu tiên luôn là tiêu đề bước: "### BƯỚC X: ...".
-2) Tiếp theo là mục "ĐÁNH GIÁ" (đúng/sai/thiếu + vì sao).
-3) Tiếp theo là mục "GỢI Ý" (nếu cần).
-4) Cuối cùng luôn có dòng: "🔴 **CÂU HỎI TRỌNG TÂM:** ...".
-5) Câu hỏi trọng tâm phải chỉ có 1 câu hỏi chính, ngắn, rõ, dễ trả lời.
-
-MẪU CÂU ĐÁNH GIÁ THÂN MẬT (ƯU TIÊN DÙNG):
-- Khi đúng: "Bạn đúng rồi đấy, cách nghĩ này rất tốt." / "Bạn nắm ý khá chắc rồi, mình bổ sung thêm một chút nhé."
-- Khi thiếu: "Bạn đi đúng hướng rồi, mình thử bổ sung thêm 1 ý nữa nhé."
-- Khi sai: "Đoạn này mình nghĩ bạn thử nhìn lại một chút nhé, vì..." (không dùng lời lẽ nặng nề).
-
-THANG ĐÁNH GIÁ CÂU TRẢ LỜI HỌC SINH:
-- ĐÚNG: nêu được ý cốt lõi + có bằng chứng từ ngữ/hình ảnh thơ.
-- THIẾU: đúng hướng nhưng thiếu ví dụ, thiếu tín hiệu thẩm mĩ, hoặc xếp loại chưa đủ nhóm.
+═══════════════════════════════════════════════
+THANG ĐÁNH GIÁ
+═══════════════════════════════════════════════
+- ĐÚNG: nêu được ý cốt lõi + dẫn bằng chứng từ ngữ/hình ảnh cụ thể trong thơ.
+- THIẾU: đúng hướng nhưng thiếu ví dụ, thiếu phân loại, hoặc chưa giải mã dụng ý.
 - SAI: lệch nghĩa văn bản hoặc không bám câu chữ.
+Mẫu: Đúng → "Bạn bắt được đúng điểm mấu chốt rồi!" | Thiếu → "Bạn đi đúng hướng, mình bổ sung thêm nhé." | Sai → "Mình nghĩ bạn thử nhìn lại câu thơ này một chút nhé, vì..."
 
-CƠ CHẾ GỢI Ý 3 LẦN:
-- Lần 1: gợi ý định hướng rất nhẹ (không lộ đáp án).
-- Lần 2: gợi ý cụ thể hơn, khoanh vùng từ khóa/câu thơ.
-- Lần 3: gợi ý gần đáp án (khung trả lời).
-- Sau 3 lần chưa đạt: đưa đáp án mẫu ngắn + giải thích vì sao.
+═══════════════════════════════════════════════
+CƠ CHẾ GỢI Ý 3 LẦN
+═══════════════════════════════════════════════
+- Lần 1: gợi ý định hướng nhẹ, không lộ đáp án.
+- Lần 2: khoanh vùng từ khóa/câu thơ cụ thể.
+- Lần 3: đưa ra khung trả lời gần đáp án.
+- Sau lần 3 vẫn chưa đạt: đưa đáp án mẫu ngắn + giải thích vì sao.
 
-CÔNG CỤ TƯƠNG TÁC (đặt cuối khi phù hợp):
-- [RHYTHM: dòng 1 / ngắt nhịp, dòng 2 / ngắt nhịp]
-- [HIGHLIGHT: từ 1, từ 2]
-- [CLEAR_MARKUP]
-- [SUMMARY_MODE]
+═══════════════════════════════════════════════
+ĐỊNH DẠNG MỌI PHẢN HỒI (BẮT BUỘC)
+═══════════════════════════════════════════════
+1) Dòng đầu LUÔN là: "### BƯỚC X: [tên bước]"
+2) Mục ĐÁNH GIÁ: đúng/thiếu/sai + lý do cụ thể.
+3) Mục GỢI Ý: nếu cần, theo cơ chế 3 lần.
+4) Dòng cuối LUÔN có: "🔴 **CÂU HỎI TRỌNG TÂM:** [1 câu hỏi ngắn, rõ]"
 
-QUY TẮC KÍCH HOẠT TƯƠNG TÁC TRÊN VĂN BẢN THƠ (BẮT BUỘC):
-- Khi học sinh trả lời ĐÚNG về nhịp: bắt buộc thêm [RHYTHM: ...] để hiện dấu ngắt nhịp trực tiếp trên bài thơ bên trái.
-- Khi học sinh trả lời ĐÚNG về hình ảnh/từ ngữ/tín hiệu thẩm mĩ: bắt buộc thêm [HIGHLIGHT: ...] để tô đậm từ/cụm từ tương ứng.
-- Khi chuyển sang phân tích sâu một từ/hình ảnh cụ thể: bắt buộc thêm [HIGHLIGHT: ...] chứa đúng từ/hình ảnh đang phân tích.
-- Nếu học sinh trả lời sai hoàn toàn, có thể dùng [CLEAR_MARKUP] để xóa đánh dấu cũ trước khi dẫn dắt lại.
+═══════════════════════════════════════════════
+CÔNG CỤ TƯƠNG TÁC VĂN BẢN THƠ
+═══════════════════════════════════════════════
+[RHYTHM: dòng thơ / ngắt nhịp, dòng tiếp / ngắt nhịp]
+[HIGHLIGHT: từ1, từ2, cụm từ3]
+[CLEAR_MARKUP]
+[SUMMARY_MODE] + JSON
 
-LUỒNG DẠY HỌC:
-### BƯỚC 1: TRI GIÁC ĐOẠN THƠ
-- Mục tiêu: nhận giọng điệu, nhịp điệu, cảm xúc chủ đạo.
+Khi học sinh xác nhận đúng về nhịp → bắt buộc thêm [RHYTHM].
+Khi học sinh xác nhận đúng về tín hiệu thẩm mĩ → bắt buộc thêm [HIGHLIGHT].
+[HIGHLIGHT] phải liệt kê chính xác TỪ/CỤM TỪ xuất hiện trong bài thơ.
 
-### BƯỚC 2: XÁC ĐỊNH TÍN HIỆU THẨM MĨ
-- Mục tiêu: chọn từ/cụm từ "đắt", đa nghĩa, gợi hình/gợi cảm.
+═══════════════════════════════════════════════
+BỐN KỸ NĂNG DẠY HỌC CHI TIẾT
+═══════════════════════════════════════════════
 
-### BƯỚC 3: PHÂN DẠNG TÍN HIỆU
-- Mục tiêu: xếp vào nhóm thể loại, từ ngữ đặc biệt, tu từ, cú pháp.
+### BƯỚC 1: KỸ NĂNG TRI GIÁC ĐOẠN THƠ
+Mục tiêu: Học sinh đọc tái hiện hình tượng thơ, nắm giọng điệu + nhịp điệu + cảm xúc chủ đạo.
+Hướng dẫn theo 3 bước:
+  1a. Gợi ý học sinh nắm GIỌNG ĐIỆU chính của đoạn thơ (dựa trên toàn bài).
+  1b. Hướng dẫn xác định THỂ THƠ và CÁCH NGẮT NHỊP.
+  1c. Yêu cầu học sinh NHẬP VAI vào chủ thể trữ tình – tưởng tượng cảm xúc là của chính mình.
 
-### BƯỚC 4: GIẢI MÃ TÍN HIỆU
-- Mục tiêu: phân tích dụng ý nghệ thuật, hiệu quả biểu đạt.
+Câu hỏi gợi ý:
+- "Bạn cảm nhận đoạn thơ này mang giọng điệu như thế nào? Hồ hởi, buồn bã, trầm ngâm, hay thiết tha?"
+- "Thể thơ gồm bao nhiêu chữ mỗi dòng? Nhịp thơ nhanh hay chậm? Tại sao?"
+- "Nếu bạn là chủ thể trữ tình trong đoạn thơ, bạn đang cảm thấy điều gì?"
+
+### BƯỚC 2: KỸ NĂNG XÁC ĐỊNH TÍN HIỆU THẨM MĨ
+Mục tiêu: Học sinh phân biệt kí hiệu ngôn ngữ thông thường với tín hiệu thẩm mĩ; tìm từ/cụm từ "đắt", đa nghĩa, gợi hình/gợi cảm.
+
+Khái niệm cốt lõi cần truyền đạt:
+- Kí hiệu ngôn ngữ thông thường: đơn nghĩa, không cần gợi hình/cảm, chỉ truyền thông tin.
+- Tín hiệu thẩm mĩ: đa nghĩa, gợi hình ảnh và cảm xúc, đòi hỏi tưởng tượng để cảm nhận.
+Ví dụ: "loắt choắt" (Lượm) vs "nhỏ" → loắt choắt vừa gợi nhỏ bé vừa gợi nhanh nhẹn, gây cảm xúc khâm phục.
+Ví dụ: "xôn xao" (Mẹ Tơm – Tố Hữu) → vừa tả tiếng sóng, vừa tả sóng lòng nhà thơ.
+
+Hướng dẫn 5 bước:
+  2a. Yêu cầu học sinh đọc và phát hiện từ/cụm từ mang tính thẩm mĩ.
+  2b. Tìm từ ngôn ngữ thông thường có nét nghĩa tương đồng.
+  2c. So sánh sự khác biệt về nghĩa và cảm xúc giữa hai từ.
+  2d. Gợi ý học sinh tự phát biểu khái niệm tín hiệu thẩm mĩ.
+  2e. Dùng [HIGHLIGHT] tô sáng các tín hiệu học sinh đã tìm.
+
+### BƯỚC 3: KỸ NĂNG PHÂN DẠNG TÍN HIỆU THẨM MĨ
+Mục tiêu: Học sinh xếp tín hiệu thẩm mĩ vào đúng nhóm.
+4 dạng cần hướng dẫn:
+  - Dạng 1 – ĐẶC TRƯNG THỂ LOẠI: thể thơ, ngắt nhịp, vần điệu.
+  - Dạng 2 – HỆ THỐNG TỪ NGỮ ĐẶC BIỆT: từ được cắt nghĩa lại, từ chính xác không thể thay, từ tượng thanh/tượng hình, từ mô tả cảm giác/trạng thái (vi vu, xào xạc, chênh vênh...).
+  - Dạng 3 – BIỆN PHÁP TU TỪ: so sánh, ẩn dụ, hoán dụ, điệp ngữ, điệp thanh, liệt kê, nhân hóa, đối, câu hỏi tu từ...
+  - Dạng 4 – CẤU TRÚC CÚ PHÁP: kết hợp từ lạ, đảo ngữ, cấu trúc song hành...
+
+Sau khi học sinh liệt kê tín hiệu ở Bước 2, yêu cầu xếp mỗi tín hiệu vào đúng dạng và giải thích tại sao.
+
+### BƯỚC 4: KỸ NĂNG GIẢI MÃ TÍN HIỆU THẨM MĨ
+Mục tiêu: Học sinh phân tích dụng ý nghệ thuật và hiệu quả biểu đạt của từng tín hiệu thẩm mĩ.
+
+Hướng dẫn 5 bước:
+  4a. Yêu cầu phát hiện và thống kê tín hiệu.
+  4b. Nhận dạng dạng tín hiệu (từ Bước 3).
+  4c. Đặt hệ thống câu hỏi giải mã:
+      - "Hình ảnh/câu thơ này đề cập đến vấn đề gì?"
+      - "Tại sao nhà thơ dùng cách nói này? Nói như vậy có ý gì?"
+      - "Dụng ý nghệ thuật của tín hiệu thẩm mĩ là gì?"
+  4d. Huy động: vốn tiếng Việt (nghĩa từ, tu từ, cú pháp) + vốn sống + liên tưởng/tưởng tượng + cảm xúc + tư duy logic.
+  4e. Chỉ ra SỰ PHI LÝ HỢP LÝ: tín hiệu thẩm mĩ thường trái thực tế nhưng phản ánh chính xác tâm trạng nhà thơ. Gợi học sinh tìm điểm phi lý đó.
+
+Câu hỏi gợi ý:
+- "Tắt nắng và buộc gió nghe có vẻ phi lí đúng không? Nhưng với một người yêu cuộc sống như Xuân Diệu, điều đó lại rất hợp lý. Bạn nghĩ điều đó nói lên điều gì về tâm hồn nhà thơ?"
+- "Câu hỏi 'Sao anh không về chơi thôn Vĩ' – ai đang hỏi ai? Mục đích thực sự là gì nếu không phải để hỏi?"
 
 ### BƯỚC 5: TỔNG KẾT
-- Bắt buộc dùng [SUMMARY_MODE] + JSON tổng kết như schema cũ.`;
+Tóm tắt hành trình học: giọng điệu, nhịp điệu, tín hiệu thẩm mĩ nổi bật, cảm hứng chủ đạo.
+Bắt buộc dùng [SUMMARY_MODE] kèm JSON:
+{"tone": "...", "rhythm": "...", "highlights": [{"word": "...", "analysis": "dụng ý nghệ thuật cụ thể, KHÔNG dùng đã phân tích hay đã được nhắc đến"}], "mainIdea": "nội dung/cảm hứng chủ đạo 1-2 câu"}
+Lưu ý: trường "analysis" PHẢI là câu phân tích cụ thể có giá trị nghệ thuật, không được dùng cụm như "đã phân tích", "đã được nhắc đến", "đã xác định".`;
 
 async function withRetry<T>(fn: () => Promise<T>, maxRetries = 3, baseDelay = 400): Promise<T> {
   let attempt = 0;
@@ -222,6 +266,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
   const [chatSession, setChatSession] = useState<ChatSession | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [showMobilePoem, setShowMobilePoem] = useState(false);
+  const [mobileTab, setMobileTab] = useState<'poem' | 'chat'>('poem');
   
   const [initStage, setInitStage] = useState<'analyzing' | 'reading' | 'ready'>('reading');
   const [poemTone] = useState('truyền cảm');
@@ -276,7 +321,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
         try {
           const response = await fetch(endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body: JSON.stringify({
               model,
               messages: conversation,
@@ -390,28 +435,44 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
     const modelTexts = messages.filter((m) => m.role === 'model').map((m) => m.text);
 
     // Extract actual analysis for a highlighted word from model messages
+    const stripMd = (s: string) =>
+      s.replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1')
+       .replace(/`([^`]+)`/g, '$1')
+       .replace(/^#{1,4}\s*/gm, '')
+       .replace(/^[-*>]\s+/gm, '')
+       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+       .trim();
+
     const extractWordAnalysis = (word: string): string => {
       for (const text of [...modelTexts].reverse()) {
-        const sentences = text.split(/[.!?\n]+/).map((s) => s.trim()).filter((s) => s.length > 20);
+        const sentences = text
+          .split(/[.!?\n]+/)
+          .map((s) => stripMd(s.trim()))
+          .filter((s) => s.length > 20);
         const relevant = sentences.filter(
           (s) =>
             new RegExp(word, 'i').test(s) &&
+            !s.startsWith('BƯỚC') &&
             !s.startsWith('###') &&
             !s.startsWith('🔴') &&
-            !s.startsWith('ĐÁNH GIÁ'),
+            !s.startsWith('ĐÁNH GIÁ') &&
+            !s.startsWith('GỢI Ý') &&
+            !s.startsWith('CÂU HỎI'),
         );
-        if (relevant.length > 0) return relevant.slice(0, 2).join('. ');
+        if (relevant.length > 0) return relevant.slice(0, 2).map(stripMd).join('. ');
       }
       return '';
     };
 
     // Extract tone from model messages
+    const stripMdSimple = (s: string) =>
+      s.replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1').replace(/`([^`]+)`/g, '$1').trim();
     const extractTone = (): string => {
       for (const text of [...modelTexts].reverse()) {
         const m =
           text.match(/giọng\s*điệu[^\n:]*[:：]\s*([^\n.]{5,80})/i) ||
           text.match(/(?:giọng|tông)\s+([^\n,]{5,60}(?:buồn|vui|tha thiết|da diết|trầm|lắng|suy tư|thiết tha)[^\n,]{0,40})/i);
-        if (m) return m[1].trim();
+        if (m) return stripMdSimple(m[1]);
       }
       return '';
     };
@@ -737,60 +798,62 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
   };
 
 
-  // ── WEB SPEECH API ──────────────────────────────────────────────
-  // Ưu tiên 1: Giọng nữ tiếng Việt miễn phí từ trình duyệt/hệ điều hành
+  // ── WEB SPEECH API ──────────────────────────────────────────────────
+  // Priority 1: Free Vietnamese female voice from browser
   const createWebSpeechPlayer = (text: string): (() => Promise<void>) | null => {
     if (!('speechSynthesis' in window)) return null;
 
-    return () => new Promise<void>((resolve, reject) => {
+    return () => new Promise<void>((resolve) => {
       window.speechSynthesis.cancel();
-
       const utter = new SpeechSynthesisUtterance(text);
       utter.lang = 'vi-VN';
-      utter.rate = 0.82;   // chậm nhẹ để đọc thơ nghe rõ
-      utter.pitch = 1.15;  // hơi cao → giọng nữ
+      utter.rate = 0.82;
+      utter.pitch = 1.1;
 
-      const trySpeak = () => {
-        const voices = window.speechSynthesis.getVoices();
+      // Always resolve – never block chat start
+      utter.onend = () => resolve();
+      utter.onerror = () => resolve();
+
+      const doSpeak = (voices: SpeechSynthesisVoice[]) => {
         const viVoices = voices.filter(v => v.lang.startsWith('vi'));
-
-        if (!voices.length) {
-          // Voices not loaded yet – wait for voiceschanged
-          return false;
+        if (viVoices.length > 0) {
+          const best =
+            viVoices.find(v => /wavenet-[ace]/i.test(v.name)) ||
+            viVoices.find(v => /google/i.test(v.name)) ||
+            viVoices[0];
+          utter.voice = best ?? null;
+        } else if (voices.length > 0) {
+          // No Vietnamese voice – use default voice, still reads the text
+          utter.lang = '';
+          utter.voice = voices.find(v => v.default) ?? voices[0] ?? null;
+        } else {
+          // No voices at all – skip silently
+          resolve();
+          return;
         }
-
-        if (!viVoices.length) {
-          reject(new Error('Không tìm thấy giọng tiếng Việt trong trình duyệt'));
-          return true;
-        }
-
-        // Ưu tiên giọng nữ: tên chứa "female", "woman", "f" hoặc "Wavenet-A/C/E"
-        const femaleVoice =
-          viVoices.find(v => /female|woman|f|wavenet-[ace]/i.test(v.name)) ||
-          viVoices.find(v => v.name.includes('Google') ) ||
-          viVoices[0];
-
-        utter.voice = femaleVoice;
-        utter.onend = () => resolve();
-        utter.onerror = (e) => {
-          if ((e as any).error === 'interrupted') { resolve(); return; }
-          reject(new Error('Web Speech error: ' + (e as any).error));
-        };
         window.speechSynthesis.speak(utter);
-        return true;
       };
 
-      if (!trySpeak()) {
-        const onVoicesChanged = () => {
-          window.speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged);
-          trySpeak();
+      const voices = window.speechSynthesis.getVoices();
+      if (voices.length > 0) {
+        doSpeak(voices);
+      } else {
+        let fired = false;
+        const onReady = () => {
+          if (fired) return;
+          fired = true;
+          window.speechSynthesis.removeEventListener('voiceschanged', onReady);
+          doSpeak(window.speechSynthesis.getVoices());
         };
-        window.speechSynthesis.addEventListener('voiceschanged', onVoicesChanged);
-        // Safety timeout
+        window.speechSynthesis.addEventListener('voiceschanged', onReady);
         setTimeout(() => {
-          window.speechSynthesis.removeEventListener('voiceschanged', onVoicesChanged);
-          trySpeak();
-        }, 2000);
+          if (!fired) {
+            fired = true;
+            window.speechSynthesis.removeEventListener('voiceschanged', onReady);
+            const v = window.speechSynthesis.getVoices();
+            if (v.length > 0) doSpeak(v); else resolve();
+          }
+        }, 2500);
       }
     });
   };
@@ -878,7 +941,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
         const response = await fetch(ELEVENLABS_TTS_ENDPOINT, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text: task.text, voiceId: ELEVENLABS_VOICE_ID }),
+          body: task.text,  // FPT API expects plain text body
         });
 
         if (!response.ok) {
@@ -988,6 +1051,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
         setReadingPoemLine(null);
 
         // BƯỚC 2: Khởi động chat và bắt đầu phân tích
+        setMobileTab('chat'); // Switch to chat tab on mobile after poem reading
         setInitStage('ready');
         const chat = createChatSession(convoHistoryRef);
         setChatSession(chat);
@@ -1102,8 +1166,8 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
   return (
     <div className="flex flex-col h-screen bg-[#f5f5f0] max-w-5xl mx-auto shadow-2xl overflow-hidden md:rounded-3xl md:h-[95vh] md:my-[2.5vh]">
       {/* Header */}
-      <header className="bg-white px-6 py-4 border-b border-[#e0e0d8] flex items-center justify-between shrink-0 z-10">
-        <div className="flex items-center gap-4">
+      <header className="bg-white px-4 md:px-6 py-3 md:py-4 border-b border-[#e0e0d8] flex items-center justify-between shrink-0 z-10">
+        <div className="flex items-center gap-3">
           <button 
             onClick={onBack}
             className="p-2 hover:bg-[#f5f5f0] rounded-full transition-colors text-[#5A5A40]"
@@ -1111,27 +1175,41 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div>
-            <h2 className="font-serif text-xl font-semibold text-[#2c2c28]">Mentor Thơ Ca</h2>
-            <p className="text-xs text-[#7A7A5A] uppercase tracking-wider font-medium">{author}</p>
+            <h2 className="font-serif text-lg md:text-xl font-semibold text-[#2c2c28]">Mentor Thơ Ca</h2>
+            <p className="text-[10px] md:text-xs text-[#7A7A5A] uppercase tracking-wider font-medium truncate max-w-[160px] md:max-w-none">{author}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => setShowMobilePoem(!showMobilePoem)}
-            className="md:hidden p-2 hover:bg-[#f5f5f0] rounded-full transition-colors text-[#5A5A40]"
-          >
-            {showMobilePoem ? <X className="w-5 h-5" /> : <BookOpen className="w-5 h-5" />}
-          </button>
-        </div>
+        {/* Mobile tab switcher (only when not in summary mode) */}
+        {!isSummaryMode && (
+          <div className="md:hidden flex items-center bg-[#f5f5f0] rounded-full p-1 gap-1">
+            <button
+              onClick={() => setMobileTab('poem')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${mobileTab === 'poem' ? 'bg-[#5A5A40] text-white shadow-sm' : 'text-[#5A5A40]'}`}
+            >
+              <BookOpen className="w-3.5 h-3.5" />
+              Bài thơ
+            </button>
+            <button
+              onClick={() => setMobileTab('chat')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium transition-all ${mobileTab === 'chat' ? 'bg-[#5A5A40] text-white shadow-sm' : 'text-[#5A5A40]'}`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              Chat
+            </button>
+          </div>
+        )}
       </header>
 
-      {/* Poem Context Panel (Desktop) / Collapsible (Mobile) */}
+      {/* Main content area */}
       <div className="flex-1 flex overflow-hidden relative">
         <div className={`
-          absolute inset-0 z-20 bg-[#fafafa] border-r border-[#e0e0d8] p-4 md:p-8 lg:p-12 overflow-y-auto transition-all duration-1000 ease-in-out
-          md:relative md:block md:translate-x-0
-          ${showMobilePoem ? 'translate-x-0' : '-translate-x-full'}
-          ${isSummaryMode ? 'md:w-full border-r-0 flex flex-col items-center' : 'md:w-1/2'}
+          bg-[#fafafa] border-r border-[#e0e0d8] overflow-y-auto transition-all duration-300 ease-in-out
+          ${isSummaryMode
+            ? 'w-full border-r-0 flex flex-col items-center p-4 md:p-8 lg:p-12'
+            : 'md:w-1/2 md:block p-4 md:p-8 lg:p-12'
+          }
+          ${!isSummaryMode && mobileTab === 'poem' ? 'block w-full' : ''}
+          ${!isSummaryMode && mobileTab === 'chat' ? 'hidden md:block' : ''}
         `}>
           {!isSummaryMode ? (
             <>
@@ -1140,7 +1218,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                 Nội dung tác phẩm
               </h3>
               <div className="transition-all duration-1000 w-full">
-                <div className="font-serif text-xl leading-[2.2] text-[#2c2c28] whitespace-pre-wrap italic pl-6 py-6 bg-gradient-to-br from-white/80 to-white/40 rounded-3xl shadow-sm backdrop-blur-sm">
+                <div className="font-serif text-base md:text-xl leading-[2.0] md:leading-[2.2] text-[#2c2c28] whitespace-pre-wrap italic pl-4 md:pl-6 py-4 md:py-6 bg-gradient-to-br from-white/80 to-white/40 rounded-2xl md:rounded-3xl shadow-sm backdrop-blur-sm">
                   {renderPoem()}
                 </div>
               </div>
@@ -1150,7 +1228,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
               <motion.div 
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="w-full max-w-6xl mx-auto py-8"
+                className="w-full max-w-6xl mx-auto py-4 md:py-8 px-2 md:px-0"
               >
                 {/* Header Section */}
                 <motion.div 
@@ -1162,20 +1240,20 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                   <div className="inline-flex items-center justify-center px-4 py-1.5 mb-6 rounded-full bg-[#5A5A40]/10 text-[#5A5A40] text-sm font-medium tracking-widest uppercase">
                     Kết quả giải mã tín hiệu thẩm mĩ
                   </div>
-                  <h2 className="text-4xl md:text-5xl font-serif text-[#2c2c28] font-bold mb-4">Hành Trình Thẩm Mĩ</h2>
+                  <h2 className="text-2xl md:text-5xl font-serif text-[#2c2c28] font-bold mb-4">Hành Trình Thẩm Mĩ</h2>
                   <div className="w-24 h-1 bg-[#5A5A40] mx-auto rounded-full opacity-30"></div>
                 </motion.div>
 
                 {/* Bento Grid Layout */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-12">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4 md:gap-6 mb-8 md:mb-12">
                   
                   {/* Left Column: Tone & Rhythm (4/12) */}
-                  <div className="lg:col-span-4 flex flex-col gap-6">
+                  <div className="md:col-span-1 lg:col-span-4 flex flex-col gap-4 md:gap-6">
                     <motion.div 
                       initial={{ opacity: 0, x: -30 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.2, duration: 0.6 }}
-                      className="bg-white p-8 rounded-[32px] shadow-sm border border-[#e0e0d8] flex-1 group hover:shadow-md transition-shadow"
+                      className="bg-white p-5 md:p-8 rounded-[24px] md:rounded-[32px] shadow-sm border border-[#e0e0d8] flex-1 group hover:shadow-md transition-shadow"
                     >
                       <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                         <Volume2 className="w-6 h-6 text-blue-600" />
@@ -1190,7 +1268,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                       initial={{ opacity: 0, x: -30 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: 0.3, duration: 0.6 }}
-                      className="bg-white p-8 rounded-[32px] shadow-sm border border-[#e0e0d8] flex-1 group hover:shadow-md transition-shadow"
+                      className="bg-white p-5 md:p-8 rounded-[24px] md:rounded-[32px] shadow-sm border border-[#e0e0d8] flex-1 group hover:shadow-md transition-shadow"
                     >
                       <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center mb-6 group-hover:scale-110 transition-transform">
                         <Activity className="w-6 h-6 text-red-600" />
@@ -1207,7 +1285,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1, duration: 0.8 }}
-                    className="lg:col-span-4 bg-[#2c2c28] text-white p-10 rounded-[40px] shadow-2xl relative overflow-hidden flex items-center justify-center min-h-[400px]"
+                    className="md:col-span-2 lg:col-span-4 bg-[#2c2c28] text-white p-6 md:p-10 rounded-[28px] md:rounded-[40px] shadow-2xl relative overflow-hidden flex items-center justify-center min-h-[200px] md:min-h-[400px]"
                   >
                     {/* Decorative elements */}
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -mr-16 -mt-16 blur-2xl"></div>
@@ -1228,7 +1306,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                     initial={{ opacity: 0, x: 30 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.4, duration: 0.6 }}
-                    className="lg:col-span-4 bg-white p-8 rounded-[32px] shadow-sm border border-[#e0e0d8] overflow-hidden"
+                    className="md:col-span-1 lg:col-span-4 bg-white p-5 md:p-8 rounded-[24px] md:rounded-[32px] shadow-sm border border-[#e0e0d8] overflow-hidden"
                   >
                     <div className="flex items-center justify-between mb-8">
                       <h4 className="text-xs font-bold text-[#7A7A5A] uppercase tracking-[0.2em]">Điểm sáng ngôn từ</h4>
@@ -1249,7 +1327,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                             {h.word}
                           </span>
                           <p className="text-sm text-[#5A5A40] leading-relaxed italic">
-                            {h.analysis}
+                            {h.analysis.replace(/\*{1,3}([^*]+)\*{1,3}/g, '$1').replace(/`([^`]+)`/g, '$1')}
                           </p>
                         </motion.div>
                       ))}
@@ -1267,7 +1345,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                   initial={{ opacity: 0, y: 40 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.6, duration: 0.8 }}
-                  className="bg-gradient-to-br from-[#5A5A40] to-[#4a4a35] text-white p-12 rounded-[40px] shadow-xl relative overflow-hidden mb-12"
+                  className="bg-gradient-to-br from-[#5A5A40] to-[#4a4a35] text-white p-6 md:p-12 rounded-[24px] md:rounded-[40px] shadow-xl relative overflow-hidden mb-8 md:mb-12"
                 >
                   <div className="absolute top-0 right-0 p-8 opacity-10">
                     <Lightbulb className="w-32 h-32" />
@@ -1275,7 +1353,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                   
                   <div className="relative z-10 max-w-3xl mx-auto text-center">
                     <h4 className="text-xs font-bold text-white/60 uppercase tracking-[0.3em] mb-6">Cảm hứng chủ đạo & Nội dung chính</h4>
-                    <p className="text-2xl md:text-3xl font-serif leading-relaxed italic">
+                    <p className="text-lg md:text-3xl font-serif leading-relaxed italic">
                       "{effectiveSummaryData.mainIdea || "Đang tổng hợp nội dung..."}"
                     </p>
                   </div>
@@ -1336,11 +1414,11 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 1 }}
-                  className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12"
+                  className="flex flex-col items-stretch sm:flex-row sm:items-center justify-center gap-3 mb-8 md:mb-12 px-2 sm:px-0"
                 >
                   <button
                     onClick={onBack}
-                    className="group px-10 py-5 bg-[#5A5A40] text-white rounded-full font-medium hover:bg-[#4a4a35] transition-all duration-300 shadow-lg hover:shadow-2xl transform hover:-translate-y-1 flex items-center gap-3"
+                    className="group px-6 py-4 bg-[#5A5A40] text-white rounded-full font-medium hover:bg-[#4a4a35] transition-all duration-300 shadow-lg flex items-center justify-center gap-3"
                   >
                     <BookOpen className="w-5 h-5 group-hover:rotate-12 transition-transform" />
                     Khám phá tác phẩm mới
@@ -1348,7 +1426,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                   
                   <button
                     onClick={downloadMindMap}
-                    className="px-10 py-5 bg-white text-[#5A5A40] border border-[#e0e0d8] rounded-full font-medium hover:bg-[#f5f5f0] transition-all duration-300 shadow-sm flex items-center gap-3"
+                    className="px-6 py-4 bg-white text-[#5A5A40] border border-[#e0e0d8] rounded-full font-medium hover:bg-[#f5f5f0] transition-all duration-300 shadow-sm flex items-center justify-center gap-3"
                   >
                     <Feather className="w-5 h-5" />
                     Tải sơ đồ mind map
@@ -1360,8 +1438,13 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
         </div>
 
         {/* Chat Area */}
-        <div className={`flex flex-col bg-white overflow-hidden relative transition-all duration-1000 ease-in-out ${isSummaryMode ? 'w-0 opacity-0' : 'flex-1 md:w-1/2 opacity-100'}`}>
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+        <div className={`flex flex-col bg-white overflow-hidden relative transition-all duration-300 ease-in-out
+          ${isSummaryMode ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'}
+          ${!isSummaryMode && mobileTab === 'chat' ? 'flex-1 w-full' : ''}
+          ${!isSummaryMode && mobileTab === 'poem' ? 'hidden md:flex md:flex-1 md:w-1/2' : ''}
+          ${!isSummaryMode ? 'md:flex-1 md:w-1/2' : ''}
+        `}>
+          <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-4 md:space-y-6">
             <AnimatePresence initial={false}>
               {messages.map((msg) => (
                 <motion.div
@@ -1376,7 +1459,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                     {msg.role === 'user' ? <User className="w-5 h-5" /> : <Sparkles className="w-5 h-5" />}
                   </div>
                   
-                  <div className={`max-w-[85%] md:max-w-[75%] rounded-2xl p-5 ${
+                  <div className={`max-w-[88%] md:max-w-[75%] rounded-2xl p-3 md:p-5 ${
                     msg.role === 'user' 
                       ? 'bg-[#f5f5f0] text-[#2c2c28] rounded-tr-sm' 
                       : 'bg-white border border-[#e0e0d8] text-[#2c2c28] rounded-tl-sm shadow-sm'
@@ -1446,7 +1529,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
           </div>
 
           {/* Input Area */}
-          <div className="p-4 bg-white border-t border-[#e0e0d8]">
+          <div className="p-3 md:p-4 bg-white border-t border-[#e0e0d8]">
             <form onSubmit={handleSend} className="relative flex items-end gap-2 max-w-4xl mx-auto">
               <textarea
                 value={input}
@@ -1458,7 +1541,7 @@ export function ChatInterface({ poem, author, onBack }: ChatInterfaceProps) {
                   }
                 }}
                 placeholder="Nhập câu trả lời của bạn..."
-                className="w-full bg-[#f5f5f0] border-none rounded-2xl py-3 pl-4 pr-14 focus:ring-2 focus:ring-[#5A5A40] resize-none max-h-32 min-h-[52px]"
+                className="w-full bg-[#f5f5f0] border-none rounded-2xl py-3 pl-4 pr-14 text-base focus:ring-2 focus:ring-[#5A5A40] resize-none max-h-32 min-h-[48px] md:min-h-[52px]"
                 rows={1}
                 disabled={isLoading || initStage !== 'ready'}
               />

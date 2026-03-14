@@ -1,35 +1,8 @@
-const GOOGLE_TTS_MAX_CHARS = 180;
-
-interface TtsBody {
-  text?: string;
-  language?: string;
-}
-
-const toArrayBuffer = async (response: Response): Promise<ArrayBuffer> => response.arrayBuffer();
-
-const requestGoogleTranslateTts = async ({
-  text,
-  language,
-  signal,
-}: {
-  text: string;
-  language: string;
-  signal: AbortSignal;
-}): Promise<Response> => {
-  const clippedText = text.slice(0, GOOGLE_TTS_MAX_CHARS);
-  const params = new URLSearchParams({
-    ie: 'UTF-8',
-    client: 'tw-ob',
-    tl: language,
-    q: clippedText,
-  });
-
-  return fetch(`https://translate.google.com/translate_tts?${params.toString()}`, {
-    method: 'GET',
-    headers: { 'User-Agent': 'Mozilla/5.0' },
-    signal,
-  });
-};
+/**
+ * api/tts.ts — FPT AI TTS (giọng linhsan, vi-VN)
+ * Env: FPT_TTS_API_KEY (set on Vercel)
+ * Fallback: Web Speech API xử lý ở client, không cần fallback server
+ */
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -37,123 +10,76 @@ export default async function handler(req: any, res: any) {
     return;
   }
 
-  const body = (req.body || {}) as TtsBody;
-  const text = body?.text;
-  const language = body?.language?.trim() || 'vi';
-
+  const { text } = req.body || {};
   if (!text || typeof text !== 'string') {
     res.status(400).json({ error: 'text is required' });
     return;
   }
 
-  const envVoiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
-  const requestedVoiceId = body.voiceId?.trim();
-  const voiceCandidates = Array.from(
-    new Set([requestedVoiceId, envVoiceId, DEFAULT_ELEVENLABS_VOICE_ID].filter(Boolean) as string[]),
-  );
+  const apiKey = process.env.FPT_TTS_API_KEY;
+  if (!apiKey) {
+    res.status(503).json({ error: 'FPT_TTS_API_KEY not configured' });
+    return;
+  }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort('TTS timeout'), 45000);
+  const timeout = setTimeout(() => controller.abort('FPT TTS timeout'), 30000);
 
   try {
-    const response = await requestGoogleTranslateTts({
-      text,
-      language,
+    // Bước 1: Gọi FPT API → nhận JSON có trường "async" (URL mp3)
+    const fptRes = await fetch('https://api.fpt.ai/hmi/tts/v5', {
+      method: 'POST',
+      headers: {
+        'api-key': apiKey,
+        'speed': '-0.5',
+        'voice': 'linhsan',
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: text,
       signal: controller.signal,
     });
 
-    if (!response.ok) {
-      const errText = await response.text();
-      res.status(502).json({ error: `Google TTS failed (${response.status}): ${errText}` });
+    if (!fptRes.ok) {
+      const err = await fptRes.text();
+      res.status(502).json({ error: `FPT TTS error (${fptRes.status}): ${err}` });
       return;
     }
 
-    const arrayBuffer = await toArrayBuffer(response);
+    const json = await fptRes.json();
+    const audioUrl: string | undefined = json?.async;
+
+    if (!audioUrl) {
+      res.status(502).json({ error: `FPT TTS: no audio URL in response: ${JSON.stringify(json)}` });
+      return;
+    }
+
+    // Bước 2: Fetch MP3 từ URL async của FPT (có thể cần retry vì xử lý bất đồng bộ)
+    let audioRes: Response | null = null;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      await new Promise(r => setTimeout(r, attempt === 0 ? 800 : 1200));
+      try {
+        audioRes = await fetch(audioUrl, { signal: controller.signal });
+        if (audioRes.ok) break;
+      } catch { /* retry */ }
+      audioRes = null;
+    }
+
+    if (!audioRes || !audioRes.ok) {
+      res.status(502).json({ error: 'FPT TTS: could not fetch async audio after retries' });
+      return;
+    }
+
+    const buffer = await audioRes.arrayBuffer();
     res.setHeader('Content-Type', 'audio/mpeg');
     res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('X-TTS-Provider', 'google-translate');
-    res.status(200).send(Buffer.from(arrayBuffer));
-
-    if (!response.ok) {
-      const errText = await response.text();
-      res.status(502).json({ error: `Google TTS failed (${response.status}): ${errText}` });
-      return;
-    }
-
-    const arrayBuffer = await toArrayBuffer(response);
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('X-TTS-Provider', 'google-translate');
-    res.status(200).send(Buffer.from(arrayBuffer));
-
-    if (!response.ok) {
-      const errText = await response.text();
-      res.status(502).json({ error: `Google TTS failed (${response.status}): ${errText}` });
-      return;
-    }
-
-    const arrayBuffer = await toArrayBuffer(response);
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('X-TTS-Provider', 'google-translate');
-    res.status(200).send(Buffer.from(arrayBuffer));
-
-    if (!response.ok) {
-      const errText = await response.text();
-      res.status(502).json({ error: `Google TTS failed (${response.status}): ${errText}` });
-      return;
-    }
-
-    const arrayBuffer = await toArrayBuffer(response);
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Cache-Control', 'no-store');
-    res.setHeader('X-TTS-Provider', 'google-translate');
-    res.status(200).send(Buffer.from(arrayBuffer));
-    const apiKey = process.env.ELEVENLABS_API_KEY;
-    const errors: string[] = [];
-
-    if (apiKey) {
-      for (const voiceId of voiceCandidates) {
-        const response = await requestElevenLabs({
-          apiKey,
-          text,
-          voiceId,
-          signal: controller.signal,
-        });
-
-        if (!response.ok) {
-          const errText = await response.text();
-          errors.push(`elevenlabs voice=${voiceId} status=${response.status} ${errText}`);
-          continue;
-        }
-
-        const arrayBuffer = await toArrayBuffer(response);
-        res.setHeader('Content-Type', 'audio/mpeg');
-        res.setHeader('Cache-Control', 'no-store');
-        res.setHeader('X-TTS-Provider', 'elevenlabs');
-        res.setHeader('X-ElevenLabs-Voice-Id', voiceId);
-        res.status(200).send(Buffer.from(arrayBuffer));
-        return;
-      }
-    } else {
-      errors.push('elevenlabs missing ELEVENLABS_API_KEY');
-    }
-
-    const freeTtsResponse = await requestGoogleTranslateTts({ text, signal: controller.signal });
-    if (freeTtsResponse.ok) {
-      const arrayBuffer = await toArrayBuffer(freeTtsResponse);
-      res.setHeader('Content-Type', 'audio/mpeg');
-      res.setHeader('Cache-Control', 'no-store');
-      res.setHeader('X-TTS-Provider', 'google-translate');
-      res.status(200).send(Buffer.from(arrayBuffer));
-      return;
-    }
-
-    const freeTtsError = await freeTtsResponse.text();
-    errors.push(`google-translate status=${freeTtsResponse.status} ${freeTtsError}`);
-    res.status(502).json({ error: `All TTS providers failed: ${errors.join(' | ')}` });
+    res.setHeader('X-TTS-Provider', 'fpt-ai');
+    res.status(200).send(Buffer.from(buffer));
   } catch (error: any) {
-    res.status(502).json({ error: error?.message || String(error) });
+    if (error?.name === 'AbortError') {
+      res.status(504).json({ error: 'FPT TTS request timed out' });
+    } else {
+      res.status(502).json({ error: error?.message || String(error) });
+    }
   } finally {
     clearTimeout(timeout);
   }
